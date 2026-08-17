@@ -95,6 +95,39 @@ MATERIAL_FIELDS = [
     ("buitentrappen", "Buitentrappen"),
 ]
 
+# Dropdown options for specific fields
+FIELD_OPTIONS = {
+    # Building fields - yes/no/n.a.
+    "grondgebonden": ["Kies een item.", "Ja", "N.v.t."],
+    "portiek": ["Kies een item.", "Ja", "N.v.t."],
+    "galerij": ["Kies een item.", "Ja", "N.v.t."],
+    "corridor": ["Kies een item.", "Ja", "N.v.t."],
+    "atrium": ["Kies een item.", "Ja", "N.v.t."],
+    "lift": ["Kies een item.", "Ja", "N.v.t."],
+    
+    # Installation fields
+    "brandmeldinstallatie": ["Kies een item.", "BMI aanwezig", "OAI aanwezig", "BMI & OAI aanwezig", "Niet aanwezig, niet vereist", "Niet aanwezig, wel vereist", "N.v.t."],
+    "pve": ["Kies een item.", "Aanwezig", "Niet aanwezig", "N.v.t."],
+    "onderhoud_bmi_oai": ["Kies een item.", "Aanwezig", "Niet aanwezig", "N.v.t."],
+    "onderhoud_blusmiddelen": ["Kies een item.", "Ja", "Nee", "N.v.t."],
+    "onderhoud_noodverlichting": ["Kies een item.", "Ja", "Nee", "N.v.t."],
+    "drukgeregelde_ventilatie": ["Kies een item.", "Ja", "N.v.t."],
+    "zelfregelende_ventielen": ["Kies een item.", "Ja", "N.v.t."],
+    
+    # Organisation fields
+    "type_bezit": ["Kies een item.", "Wooneenheden", "Maatschappelijk onroerend goed", "Bedrijf onroerend goed", "Gemengd", "N.v.t."],
+    "woonvorm": ["Kies een item.", "Zelfstandig", "Zorg", "N.v.t."],
+    "zorgzwaarte": ["Kies een item.", "Zorg op afspraak", "Zorg op afroep", "24-uurs zorg", "N.v.t."],
+    "demarcatie": ["Kies een item.", "Ja", "Nee", "N.v.t."],
+    "melding_brandveilig_gebruik": ["Kies een item.", "Aanwezig", "Niet aanwezig, niet vereist", "Niet aanwezig, wel vereist"],
+    "bhv": ["Kies een item.", "Aanwezig", "Niet aanwezig, niet vereist", "Niet aanwezig, wel vereist"],
+    "ontruimingsplan": ["Kies een item.", "Aanwezig", "Niet aanwezig, niet vereist", "Niet aanwezig, wel vereist"],
+    "ontruimingsplattegronden": ["Kies een item.", "Aanwezig", "Niet aanwezig, niet vereist", "Niet aanwezig, wel vereist"],
+    
+    # Report data fields
+    "tekeningen_ontvangen": ["Kies een item.", "wel", "geen"],
+}
+
 
 def load_choices() -> list[dict]:
     if not CHOICES_PATH.exists():
@@ -125,6 +158,135 @@ def show_flash() -> None:
         st.toast(message, icon="✅")
 
 
+def camera_input_with_switch(label: str = "Maak inspectiefoto", key: str = "camera_input"):
+    """Camera input with front/back camera selection for mobile devices.
+    
+    This component uses HTML5 getUserMedia API for camera access and allows
+    switching between front and back cameras on mobile devices.
+    """
+    import io
+    
+    # Initialize session state for camera mode
+    if f"{key}_mode" not in st.session_state:
+        st.session_state[f"{key}_mode"] = "user"  # 'user' = front, 'environment' = back
+    if f"{key}_photo_data" not in st.session_state:
+        st.session_state[f"{key}_photo_data"] = None
+    
+    # Create columns for display
+    col1, col2 = st.columns([4, 1])
+    
+    camera_mode = st.session_state[f"{key}_mode"]
+    camera_label = "📱 Front Camera" if camera_mode == "user" else "📷 Back Camera"
+    
+    with col2:
+        st.write("")  # Spacing
+        if st.button("🔄 Wissel\ncamera", key=f"{key}_switch_btn", use_container_width=True, help="Wisselen tussen front en back camera"):
+            st.session_state[f"{key}_mode"] = "environment" if camera_mode == "user" else "user"
+            st.rerun()
+    
+    with col1:
+        st.caption(f"Actieve camera: {camera_label}")
+        
+        # Create HTML component for camera
+        camera_html = f"""
+        <div id="camera-container-{key}" style="text-align: center; padding: 10px;">
+            <video id="video-{key}" style="width: 100%; max-width: 500px; border-radius: 8px; background: #000; margin: 10px 0;" playsinline autoplay muted></video>
+            <canvas id="canvas-{key}" style="display: none;"></canvas>
+            <div id="error-{key}" style="color: #d32f2f; font-size: 12px; margin: 10px 0; display: none;"></div>
+            <div style="margin: 10px 0;">
+                <button id="btn-capture-{key}" style="padding: 8px 16px; background-color: #ff2b2b; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">Maak foto</button>
+            </div>
+        </div>
+        
+        <script>
+        (function() {{
+            const videoId = "video-{key}";
+            const canvasId = "canvas-{key}";
+            const errorId = "error-{key}";
+            const btnCaptureId = "btn-capture-{key}";
+            const facingMode = "{camera_mode}";
+            
+            let stream = null;
+            const videoElement = document.getElementById(videoId);
+            const canvasElement = document.getElementById(canvasId);
+            const errorDiv = document.getElementById(errorId);
+            const captureBtn = document.getElementById(btnCaptureId);
+            
+            async function startCamera() {{
+                try {{
+                    errorDiv.style.display = 'none';
+                    
+                    if (stream) {{
+                        stream.getTracks().forEach(track => track.stop());
+                    }}
+                    
+                    const constraints = {{
+                        video: {{
+                            facingMode: facingMode,
+                            width: {{ ideal: 1280 }},
+                            height: {{ ideal: 720 }}
+                        }},
+                        audio: false
+                    }};
+                    
+                    stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    videoElement.srcObject = stream;
+                    captureBtn.disabled = false;
+                }} catch (err) {{
+                    errorDiv.style.display = 'block';
+                    errorDiv.innerHTML = '<strong>Camera fout:</strong> ' + err.message;
+                    captureBtn.disabled = true;
+                }}
+            }}
+            
+            captureBtn.addEventListener('click', function() {{
+                try {{
+                    const ctx = canvasElement.getContext('2d');
+                    canvasElement.width = videoElement.videoWidth;
+                    canvasElement.height = videoElement.videoHeight;
+                    ctx.drawImage(videoElement, 0, 0);
+                    
+                    canvasElement.toBlob(blob => {{
+                        const reader = new FileReader();
+                        reader.onload = (e) => {{
+                            // Store in sessionStorage for retrieval
+                            sessionStorage.setItem('camera-photo-{key}', e.target.result);
+                            // Trigger a download to simulate file input
+                            const link = document.createElement('a');
+                            link.href = e.target.result;
+                            link.download = 'photo.jpg';
+                            // Notify Streamlit
+                            window.parent.postMessage({{type: 'camera_photo_{key}', data: e.target.result}}, '*');
+                        }};
+                        reader.readAsDataURL(blob);
+                    }}, 'image/jpeg', 0.9);
+                }} catch (err) {{
+                    errorDiv.style.display = 'block';
+                    errorDiv.innerHTML = '<strong>Foto fout:</strong> ' + err.message;
+                }}
+            }});
+            
+            // Start camera on load
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {{
+                startCamera();
+            }} else {{
+                errorDiv.style.display = 'block';
+                errorDiv.innerHTML = 'Camera is niet beschikbaar op dit apparaat.';
+            }}
+        }})();
+        </script>
+        """
+        
+        st.html(camera_html)
+    
+    # Use regular camera_input as fallback, but keep radio selection for explicit camera choice
+    st.write("")  # Spacing
+    st.caption("Alternatief: gebruik Streamlit's camera input")
+    photo = st.camera_input(label, key=f"{key}_input")
+    
+    return photo
+
+
 def save_image(upload, project_id: int, prefix: str) -> str | None:
     if upload is None:
         return None
@@ -150,7 +312,19 @@ def input_grid(data: dict, fields: list[tuple[str, str]], prefix: str) -> dict:
     cols = st.columns(2)
     for i, (key, label) in enumerate(fields):
         with cols[i % 2]:
-            result[key] = st.text_input(label, value=str(data.get(key, "")), key=f"{prefix}_{key}")
+            # Check if this field has predefined options
+            if key in FIELD_OPTIONS:
+                options = FIELD_OPTIONS[key]
+                current_value = data.get(key, "")
+                # If current value is not in options, default to first option
+                try:
+                    index = options.index(current_value) if current_value in options else 0
+                except ValueError:
+                    index = 0
+                result[key] = st.selectbox(label, options, index=index, key=f"{prefix}_{key}")
+            else:
+                # Use text input for fields without predefined options
+                result[key] = st.text_input(label, value=str(data.get(key, "")), key=f"{prefix}_{key}")
     return result
 
 
@@ -445,11 +619,19 @@ def render_general_data(project: dict) -> None:
         st.markdown("#### Vaste rapportteksten")
         st.caption("Deze teksten komen rechtstreeks uit de Word-template en zijn hier bewust niet vrij bewerkbaar.")
         st.text_area("3.6 Doelstelling van het onderzoek", texts["doelstelling"], height=100, disabled=True)
+        
+        # Dynamic ausgangspunten with tekeningen option
+        tekeningen_options = ["Kies een item.", "wel", "geen"]
+        tekeningen_value = project.get("tekeningen_ontvangen", "geen")
+        tekeningen_index = tekeningen_options.index(tekeningen_value) if tekeningen_value in tekeningen_options else 2  # Default to "geen"
+        tekeningen_ontvangen = st.selectbox("Tekeningen ontvangen", tekeningen_options, index=tekeningen_index, key="tekeningen_ontvangen_select")
+        
         st.text_area("3.7 Uitgangspunten", texts["uitgangspunten"], height=150, disabled=True)
+        
         bezochte_woningen = st.text_area("Bezochte woningen", project.get("bezochte_woningen", ""), height=80)
         beperkingen = st.text_area("Beperkingen", project.get("beperkingen", ""), height=80)
         if st.form_submit_button("Algemene gegevens opslaan", type="primary"):
-            project.update({"algemene_omschrijving": algemene_omschrijving, "bezochte_woningen": bezochte_woningen, "beperkingen": beperkingen})
+            project.update({"algemene_omschrijving": algemene_omschrijving, "bezochte_woningen": bezochte_woningen, "beperkingen": beperkingen, "tekeningen_ontvangen": tekeningen_ontvangen})
             project.update(building)
             project.update(installation)
             project.update(organisation)
@@ -480,39 +662,103 @@ def render_situation(project: dict) -> None:
             st.success("Situatiefoto’s opgeslagen.")
 
 
+def merge_defects(selected_choices: list[dict]) -> dict:
+    """Merge multiple defects, consolidating identical requirements/measures."""
+    if not selected_choices:
+        return {}
+    
+    if len(selected_choices) == 1:
+        return selected_choices[0]
+    
+    # Collect unique subjects
+    subjects = list(dict.fromkeys(c.get("onderwerp", "") for c in selected_choices if c.get("onderwerp")))
+    
+    # Merge requirements (artikelen)
+    artikelen = [c.get("artikel", "") for c in selected_choices if c.get("artikel")]
+    unique_artikelen = list(dict.fromkeys(artikelen))
+    
+    # Merge measures (maatregelen)
+    maatregelen = [c.get("maatregel", "") for c in selected_choices if c.get("maatregel")]
+    unique_maatregelen = list(dict.fromkeys(maatregelen))
+    
+    # Merge remarks and guidelines (keep all unique)
+    remarks = [c.get("opmerking", "") for c in selected_choices if c.get("opmerking")]
+    unique_remarks = list(dict.fromkeys(remarks))
+    guidelines = [c.get("richtlijn", "") for c in selected_choices if c.get("richtlijn")]
+    unique_guidelines = list(dict.fromkeys(guidelines))
+    
+    # Collect all defect descriptions
+    defects = [c.get("gebrek", "") for c in selected_choices if c.get("gebrek")]
+    
+    # Build merged result
+    merged = {
+        "onderwerp": " / ".join(subjects),
+        "gebrek": "\n\n".join(defects),
+        "artikel": "\n\n".join(unique_artikelen) if len(unique_artikelen) > 1 else (unique_artikelen[0] if unique_artikelen else ""),
+        "maatregel": "\n\n".join(unique_maatregelen) if len(unique_maatregelen) > 1 else (unique_maatregelen[0] if unique_maatregelen else ""),
+        "opmerking": "\n\n".join(unique_remarks) if unique_remarks else "",
+        "richtlijn": "\n\n".join(unique_guidelines) if unique_guidelines else "",
+    }
+    
+    return merged
+
+
 def render_add_finding(project: dict, choices: list[dict]) -> None:
     st.subheader("Nieuwe bevinding")
     finding_type = st.radio("Soort registratie", ["Maatregel", "Overige bevinding"], horizontal=True)
     labels = ["Vrij invoeren"] + [f"{c['onderwerp']} — {c['gebrek']}" for c in choices]
-    selected_label = st.selectbox("Standaard gebrek", labels, index=0)
-    choice = {} if selected_label == "Vrij invoeren" else choices[labels.index(selected_label) - 1]
-    if choice:
-        st.info(f"BBL/eis: {choice.get('artikel','')}\n\nMaatregel: {choice.get('maatregel','')}")
+    
+    selected_labels = st.multiselect("Standaard gebreken", labels, default=[], help="Selecteer een of meerdere standaard gebreken")
+    
+    selected_choices = []
+    if "Vrij invoeren" not in selected_labels:
+        selected_choices = [choices[labels.index(label) - 1] for label in selected_labels]
+    
+    # Merge selected defects
+    merged_choice = merge_defects(selected_choices)
+    
+    # Show merged information
+    if merged_choice:
+        eis_preview = merged_choice.get("artikel", "")
+        maatregel_preview = merged_choice.get("maatregel", "")
+        if len(eis_preview) > 200:
+            eis_preview = eis_preview[:200] + "…"
+        if len(maatregel_preview) > 200:
+            maatregel_preview = maatregel_preview[:200] + "…"
+        st.info(f"BBL/eis:\n{eis_preview}\n\nMaatregel:\n{maatregel_preview}")
 
-    choice_key = str(labels.index(selected_label))
+    choice_key = str(len(selected_labels))
     with st.form("add_finding", clear_on_submit=True):
         c1, c2, c3 = st.columns(3)
         code_group = c1.selectbox("Codegroep", ["G", "W"], help="G = gemeenschappelijke ruimte, W = woning")
         discipline = c2.selectbox("Werksoort", ["Bouwkundig", "Installatietechnisch", "Organisatorisch"])
-        onderwerp = c3.text_input("Onderwerp", value=choice.get("onderwerp", ""), key=f"new_subject_{choice_key}")
+        onderwerp = c3.text_input("Onderwerp", value=merged_choice.get("onderwerp", ""), key=f"new_subject_{choice_key}")
         c4, c5, c6 = st.columns(3)
         tekeningnummer = c4.text_input("Tekeningnummer", "N.v.t.")
         bouwlaag = c5.text_input("Bouwlaag")
         ruimte = c6.text_input("Ruimte(nummer)")
-        eis = st.text_area("Eis / artikel BBL", value=choice.get("artikel", ""), height=90, key=f"new_requirement_{choice_key}")
-        gebrek = st.text_area("Gebrek / bevinding", value=choice.get("gebrek", ""), height=100, key=f"new_defect_{choice_key}")
+        eis = st.text_area("Eis / artikel BBL", value=merged_choice.get("artikel", ""), height=90, key=f"new_requirement_{choice_key}")
+        gebrek = st.text_area("Gebrek / bevinding", value=merged_choice.get("gebrek", ""), height=100, key=f"new_defect_{choice_key}")
         c7, c8 = st.columns(2)
         aantal = c7.text_input("Aantal")
         afmeting = c8.text_input("Afmeting")
         maatregel_label = "Conclusie / advies" if finding_type == "Overige bevinding" else "Maatregel"
-        maatregel = st.text_area(maatregel_label, value=choice.get("maatregel", ""), height=110, key=f"new_measure_{choice_key}")
-        opmerking = st.text_area("Opmerking", value=choice.get("opmerking", ""), height=80, key=f"new_note_{choice_key}")
-        richtlijn = st.text_area("Richtlijn", value=choice.get("richtlijn", ""), height=70, key=f"new_guideline_{choice_key}")
+        maatregel = st.text_area(maatregel_label, value=merged_choice.get("maatregel", ""), height=110, key=f"new_measure_{choice_key}")
+        opmerking = st.text_area("Opmerking", value=merged_choice.get("opmerking", ""), height=80, key=f"new_note_{choice_key}")
+        richtlijn = st.text_area("Richtlijn", value=merged_choice.get("richtlijn", ""), height=70, key=f"new_guideline_{choice_key}")
         st.markdown("#### Foto’s")
+        
         p1, p2 = st.columns(2)
-        photo_camera = p1.camera_input("Maak inspectiefoto")
-        photo_upload = p1.file_uploader("Of kies inspectiefoto", type=["jpg", "jpeg", "png"], key="new_before_upload")
-        photo_after = p2.file_uploader("Foto na herstel (optioneel)", type=["jpg", "jpeg", "png"], key="new_after_upload")
+        
+        with p1:
+            st.write("**Inspectiefoto (voor)**")
+            photo_camera = st.camera_input("Maak inspectiefoto")
+            st.caption("💡 Op iPad: druk op camera-icoon om tussen camera's te wisselen")
+            photo_upload = st.file_uploader("Of kies inspectiefoto", type=["jpg", "jpeg", "png"], key="new_before_upload")
+        
+        with p2:
+            st.write("**Herstel foto (optioneel)**")
+            photo_after = st.file_uploader("Foto na herstel", type=["jpg", "jpeg", "png"], key="new_after_upload")
         submitted = st.form_submit_button("Bevinding toevoegen", type="primary")
         if submitted:
             if not gebrek.strip():

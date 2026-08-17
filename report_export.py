@@ -18,9 +18,9 @@ from PIL import Image, ImageOps
 
 # These colors are the colors used for the three disciplines in the source report.
 DISCIPLINE_COLORS = {
-    "Bouwkundig": "FFFF00",
-    "Installatietechnisch": "92D050",
-    "Organisatorisch": "5B9BD5",
+    "Bouwkundig": "FBFF4A",
+    "Installatietechnisch": "05BD00",
+    "Organisatorisch": "002CBD",
 }
 
 BUILDING_FIELDS = [
@@ -146,6 +146,12 @@ def _shade(cell, fill: str) -> None:
         shd = OxmlElement("w:shd")
         tc_pr.append(shd)
     shd.set(qn("w:fill"), fill)
+
+
+def _shade_row(row, fill: str) -> None:
+    """Apply shading to all cells in a row."""
+    for cell in row.cells:
+        _shade(cell, fill)
 
 
 def _remove_between(body, start_element, end_element, include_start=False) -> None:
@@ -348,17 +354,17 @@ def _fill_finding_table(table: Table, finding: dict, other=False) -> None:
     code = f"{finding.get('code_group', 'G')}.{int(finding.get('code_number') or 0):02d}"
     if other:
         _set_cell_value(table.rows[0].cells[0], "Foto tijdens inspectie")
-        _shade(table.rows[0].cells[0], "A6A6A6")
+        _shade_row(table.rows[0], "A6A6A6")
         table.rows[0].cells[0].paragraphs[0].runs[0].bold = True
         _set_cell_value(table.rows[1].cells[0], "Overzichtsfoto")
         _set_cell_value(table.rows[1].cells[1], "Detailfoto")
     else:
         _set_cell_value(table.rows[0].cells[0], f"Gebrek {code}")
-        _shade(table.rows[0].cells[0], DISCIPLINE_COLORS.get(finding.get("discipline"), "FFFF00"))
+        _shade_row(table.rows[0], DISCIPLINE_COLORS.get(finding.get("discipline"), "FBFF4A"))
     _add_cell_photo(table.rows[2].cells[0], finding.get("photo_before"))
     _add_cell_photo(table.rows[2].cells[1], finding.get("photo_after"))
     _set_cell_value(table.rows[3].cells[0], "Algemene informatie")
-    _shade(table.rows[3].cells[0], "D9D9D9")
+    _shade_row(table.rows[3], "D9D9D9")
 
     if other:
         labels = ["Tekeningnummer:", "Bouwlaag:", "Ruimtenummer:", "Eis:", "Bevinding:", "Conclusie:"]
@@ -481,6 +487,18 @@ def _fill_fixed_and_variable_text(doc: Document, project: dict) -> None:
     remaining = [p for p in doc.paragraphs if " ".join(p.text.split()) == "[Invullen]"]
     if remaining:
         _set_paragraph_text(remaining[-1], project.get("beperkingen") or "[Nog invullen]")
+
+    # Replace tekeningen_ontvangen value in Uitgangspunten section
+    tekeningen_waarde = project.get("tekeningen_ontvangen", "geen")
+    if tekeningen_waarde and tekeningen_waarde != "Kies een item.":
+        # Find and replace in the Uitgangspunten paragraph (paragraph 106)
+        try:
+            uitgangspunten_para = doc.paragraphs[106]
+            if "Voorafgaand aan de inspectie zijn geen tekeningen ontvangen" in uitgangspunten_para.text:
+                new_text = uitgangspunten_para.text.replace("zijn geen tekeningen", f"zijn {tekeningen_waarde} tekeningen")
+                _set_paragraph_text(uitgangspunten_para, new_text)
+        except (IndexError, AttributeError):
+            pass  # If paragraph not found, continue
 
     summary_heading = _find_paragraph(doc, "Samenvatting")
     summary_source = doc.paragraphs[83]
