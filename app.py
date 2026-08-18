@@ -158,135 +158,6 @@ def show_flash() -> None:
         st.toast(message, icon="✅")
 
 
-def camera_input_with_switch(label: str = "Maak inspectiefoto", key: str = "camera_input"):
-    """Camera input with front/back camera selection for mobile devices.
-    
-    This component uses HTML5 getUserMedia API for camera access and allows
-    switching between front and back cameras on mobile devices.
-    """
-    import io
-    
-    # Initialize session state for camera mode
-    if f"{key}_mode" not in st.session_state:
-        st.session_state[f"{key}_mode"] = "user"  # 'user' = front, 'environment' = back
-    if f"{key}_photo_data" not in st.session_state:
-        st.session_state[f"{key}_photo_data"] = None
-    
-    # Create columns for display
-    col1, col2 = st.columns([4, 1])
-    
-    camera_mode = st.session_state[f"{key}_mode"]
-    camera_label = "📱 Front Camera" if camera_mode == "user" else "📷 Back Camera"
-    
-    with col2:
-        st.write("")  # Spacing
-        if st.button("🔄 Wissel\ncamera", key=f"{key}_switch_btn", use_container_width=True, help="Wisselen tussen front en back camera"):
-            st.session_state[f"{key}_mode"] = "environment" if camera_mode == "user" else "user"
-            st.rerun()
-    
-    with col1:
-        st.caption(f"Actieve camera: {camera_label}")
-        
-        # Create HTML component for camera
-        camera_html = f"""
-        <div id="camera-container-{key}" style="text-align: center; padding: 10px;">
-            <video id="video-{key}" style="width: 100%; max-width: 500px; border-radius: 8px; background: #000; margin: 10px 0;" playsinline autoplay muted></video>
-            <canvas id="canvas-{key}" style="display: none;"></canvas>
-            <div id="error-{key}" style="color: #d32f2f; font-size: 12px; margin: 10px 0; display: none;"></div>
-            <div style="margin: 10px 0;">
-                <button id="btn-capture-{key}" style="padding: 8px 16px; background-color: #ff2b2b; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">Maak foto</button>
-            </div>
-        </div>
-        
-        <script>
-        (function() {{
-            const videoId = "video-{key}";
-            const canvasId = "canvas-{key}";
-            const errorId = "error-{key}";
-            const btnCaptureId = "btn-capture-{key}";
-            const facingMode = "{camera_mode}";
-            
-            let stream = null;
-            const videoElement = document.getElementById(videoId);
-            const canvasElement = document.getElementById(canvasId);
-            const errorDiv = document.getElementById(errorId);
-            const captureBtn = document.getElementById(btnCaptureId);
-            
-            async function startCamera() {{
-                try {{
-                    errorDiv.style.display = 'none';
-                    
-                    if (stream) {{
-                        stream.getTracks().forEach(track => track.stop());
-                    }}
-                    
-                    const constraints = {{
-                        video: {{
-                            facingMode: facingMode,
-                            width: {{ ideal: 1280 }},
-                            height: {{ ideal: 720 }}
-                        }},
-                        audio: false
-                    }};
-                    
-                    stream = await navigator.mediaDevices.getUserMedia(constraints);
-                    videoElement.srcObject = stream;
-                    captureBtn.disabled = false;
-                }} catch (err) {{
-                    errorDiv.style.display = 'block';
-                    errorDiv.innerHTML = '<strong>Camera fout:</strong> ' + err.message;
-                    captureBtn.disabled = true;
-                }}
-            }}
-            
-            captureBtn.addEventListener('click', function() {{
-                try {{
-                    const ctx = canvasElement.getContext('2d');
-                    canvasElement.width = videoElement.videoWidth;
-                    canvasElement.height = videoElement.videoHeight;
-                    ctx.drawImage(videoElement, 0, 0);
-                    
-                    canvasElement.toBlob(blob => {{
-                        const reader = new FileReader();
-                        reader.onload = (e) => {{
-                            // Store in sessionStorage for retrieval
-                            sessionStorage.setItem('camera-photo-{key}', e.target.result);
-                            // Trigger a download to simulate file input
-                            const link = document.createElement('a');
-                            link.href = e.target.result;
-                            link.download = 'photo.jpg';
-                            // Notify Streamlit
-                            window.parent.postMessage({{type: 'camera_photo_{key}', data: e.target.result}}, '*');
-                        }};
-                        reader.readAsDataURL(blob);
-                    }}, 'image/jpeg', 0.9);
-                }} catch (err) {{
-                    errorDiv.style.display = 'block';
-                    errorDiv.innerHTML = '<strong>Foto fout:</strong> ' + err.message;
-                }}
-            }});
-            
-            // Start camera on load
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {{
-                startCamera();
-            }} else {{
-                errorDiv.style.display = 'block';
-                errorDiv.innerHTML = 'Camera is niet beschikbaar op dit apparaat.';
-            }}
-        }})();
-        </script>
-        """
-        
-        st.html(camera_html)
-    
-    # Use regular camera_input as fallback, but keep radio selection for explicit camera choice
-    st.write("")  # Spacing
-    st.caption("Alternatief: gebruik Streamlit's camera input")
-    photo = st.camera_input(label, key=f"{key}_input")
-    
-    return photo
-
-
 def save_image(upload, project_id: int, prefix: str) -> str | None:
     if upload is None:
         return None
@@ -752,9 +623,7 @@ def render_add_finding(project: dict, choices: list[dict]) -> None:
         
         with p1:
             st.write("**Inspectiefoto (voor)**")
-            photo_camera = st.camera_input("Maak inspectiefoto")
-            st.caption("💡 Op iPad: druk op camera-icoon om tussen camera's te wisselen")
-            photo_upload = st.file_uploader("Of kies inspectiefoto", type=["jpg", "jpeg", "png"], key="new_before_upload")
+            photo_upload = st.file_uploader("Kies inspectiefoto", type=["jpg", "jpeg", "png"], key="new_before_upload")
         
         with p2:
             st.write("**Herstel foto (optioneel)**")
@@ -764,7 +633,7 @@ def render_add_finding(project: dict, choices: list[dict]) -> None:
             if not gebrek.strip():
                 st.error("Vul een gebrek of bevinding in.")
             else:
-                before_path = save_image(photo_camera or photo_upload, project["id"], "inspectie")
+                before_path = save_image(photo_upload, project["id"], "inspectie")
                 after_path = save_image(photo_after, project["id"], "herstel")
                 insert_finding(project["id"], {
                     "finding_type": finding_type,
